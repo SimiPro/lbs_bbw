@@ -17,6 +17,7 @@
 #include <igl/quat_conjugate.h>
 #include <igl/trackball.h>
 #include <igl/directed_edge_orientations.h>
+#include <igl/deform_skeleton.h>
 
 using namespace Eigen;
 using namespace std;
@@ -42,7 +43,7 @@ int selected = 0;
 int down_mouse_x = -1, down_mouse_y = -1;
 bool picked_boned = false;
 
-
+int moved = 0;
 
 
 // else
@@ -66,7 +67,7 @@ void new_mesh(Viewer &viewer) {
     vector<Vector3d> dT(BE.rows(), Vector3d(0,0,0));   // dT  #BE list of relative translations
 
 
-    const Quaterniond twist(AngleAxisd(igl::PI*0.3, Vector3d(1,0,0)));
+    const Quaterniond twist(AngleAxisd(igl::PI*0.3*(++moved), Vector3d(0,1,0)));
     const Quaterniond bend(AngleAxisd(-igl::PI*0.7,Vector3d(0,0,1)));
 
     dQ[selected] = rest_pose[selected]*twist*rest_pose[selected].conjugate();
@@ -75,16 +76,25 @@ void new_mesh(Viewer &viewer) {
     //dQ[3] = rest_pose[3]*twist*rest_pose[3].conjugate();
 
     MatrixXd T;
-    forward_kinematics(C,BE,P,dQ,dT,T);
+    forward_kinematics(C, BE, P, dQ, dT, T);
 
     // lbs
     MatrixXd U = M*T;
     MatrixXd UN;
     per_face_normals(U,F,UN);
 
+    // Also deform skeleton edges
+    MatrixXd CT;
+    MatrixXi BET;
+    igl::deform_skeleton(C, BE, T, CT, BET);
+
     viewer.data().clear();
     viewer.data().set_mesh(U, F);
     viewer.data().set_normals(UN);
+    viewer.data().set_edges(CT, BET, sea_green);
+    viewer.data().set_points(CT, RowVector3d(0,1,0.5));
+
+
 }
 
 
@@ -94,11 +104,13 @@ bool key_down(Viewer &viewer, unsigned char key, int mods) {
       selected++;
       selected = std::min(std::max(selected,0),(int)W.cols()-1);
       set_color(viewer);
+      moved = 0;
       break;
     case ',':
       selected--;
       selected = std::min(std::max(selected,0),(int)W.cols()-1);
       set_color(viewer);
+      moved = 0;
       break;
     case ' ':
         new_mesh(viewer);

@@ -1,4 +1,7 @@
-# libigl example project
+
+# Inverse Kinematics on Stereoids ? 
+
+
 
 A blank project example showing how to use libigl and cmake. Feel free and
 encouraged to copy or fork this project as a way of starting a new personal
