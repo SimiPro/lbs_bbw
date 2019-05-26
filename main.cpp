@@ -1,4 +1,6 @@
 #include <igl/opengl/glfw/Viewer.h>
+#include <igl/opengl/glfw/imgui/ImGuiMenu.h>
+#include <igl/opengl/glfw/imgui/ImGuiHelpers.h>
 
 #include <igl/read_triangle_mesh.h>
 #include <igl/readTGF.h>
@@ -36,15 +38,21 @@ MatrixXd C; // list of control an joint positions
 MatrixXi BE; // list of bone edges indexing C
 VectorXi P; // list of point handles indexing C
 
+// skeleton deformed
+MatrixXd CT;
+MatrixXi BET;
+
+// 
+RowVector3d moving_point;
+
 RotationList rest_pose;
 
 double bbd = 1.0;
 int selected = 0;
-int down_mouse_x = -1, down_mouse_y = -1;
-bool picked_boned = false;
+int mouse_x = -1, mouse_y = -1; double mouse_z = -1;
 
 int moved = 0;
-
+bool dragging = false;
 
 // else
 const RowVector3d sea_green(70./255.,252./255.,167./255.);
@@ -52,7 +60,8 @@ const RowVector3d sea_green(70./255.,252./255.,167./255.);
 int v_spec = -1;
 
 void set_color(igl::opengl::glfw::Viewer &viewer) {
-  MatrixXd C;
+  MatrixXd C(0,3);
+
   jet(W.col(selected).eval(),true,C);
 
   if (v_spec != -1) {
@@ -61,40 +70,181 @@ void set_color(igl::opengl::glfw::Viewer &viewer) {
   viewer.data().set_colors(C);
 }
 
-void new_mesh(Viewer &viewer) {
-    // transformations
-    RotationList dQ(BE.rows(), Quaterniond::Identity());   //   dQ  #BE list of relative rotations
+RotationList dQ(0, Quaterniond::Identity()); //   dQ  #BE list of relative rotations
+
+// angle should be (1,0,0) or (0,1,0) or (0,0,1)
+// degree would make sense to keep between 0, 360
+void forward(const double degree, const Vector3d &angle,  MatrixXd &T) {
+    //RotationList dQ(BE.rows(), Quaterniond::Identity());   //   dQ  #BE list of relative rotations
+    if (dQ.size() == 0) {
+        dQ.resize(BE.rows()); std::fill(dQ.begin(), dQ.end(), Quaterniond::Identity());
+    }
     vector<Vector3d> dT(BE.rows(), Vector3d(0,0,0));   // dT  #BE list of relative translations
 
-
-    const Quaterniond twist(AngleAxisd(igl::PI*0.3*(++moved), Vector3d(0,1,0)));
-    const Quaterniond bend(AngleAxisd(-igl::PI*0.7,Vector3d(0,0,1)));
-
-    dQ[selected] = rest_pose[selected]*twist*rest_pose[selected].conjugate();
+    //const Quaterniond twist(AngleAxisd(igl::PI*0.3*(++moved), Vector3d(0,1,0)));
+    //const Quaterniond bend(AngleAxisd(-igl::PI*0.7,Vector3d(0,0,1)));
+    const Quaterniond relRot(AngleAxisd(degree, angle));
+        //dQ[selected] = rest_pose[selected]*twist*rest_pose[selected].conjugate();
+    dQ[selected] = relRot;
     //dQ[3] = rest_pose[2]*bend*rest_pose[2].conjugate();
     //dQ[2] = rest_pose[2]*twist*rest_pose[2].conjugate();
     //dQ[3] = rest_pose[3]*twist*rest_pose[3].conjugate();
 
+
+    forward_kinematics(C, BE, P, dQ, dT, T);
+}
+
+// a is a vector that holds all thetas stacked 
+// theta_11 = degree of theta_11 rotation around x axis of bone 1
+// , theta_12, degree of theta_12 rotation around y axis of bone 1
+// theta_13 
+void forward2(const VectorXd &a, MatrixXd &U, MatrixXd &CT_new, MatrixXi &BET_new, const bool calc_u) {
+    int m = BE.rows();
+    assert(a.size() == m*3);
+
+    RotationList dQ(m, Quaterniond::Identity()); //   dQ  #BE list of relative rotations
+    for (int i = 0; i < m; i++) {
+        const Quaterniond rotX(AngleAxisd(a[3*i + 0], Vector3d(1, 0, 0)));
+        const Quaterniond rotY(AngleAxisd(a[3*i + 1], Vector3d(0, 1, 0)));
+        const Quaterniond rotZ(AngleAxisd(a[3*i + 2], Vector3d(0, 0, 1)));
+        dQ[i] = rotX*rotY*rotZ;
+        //dQ[i] = rotX;
+    }
+
+    vector<Vector3d> dT(m, Vector3d(0,0,0));   // dT  #BE list of relative translations
+
     MatrixXd T;
     forward_kinematics(C, BE, P, dQ, dT, T);
+    if (calc_u)
+        U = M*T;
+    igl::deform_skeleton(C, BE, T, CT_new, BET_new);
+}
+
+bool first = true;
+
+
+void jacobian_finite_diff(MatrixXd &jakob, VectorXd &a) {
+    int m = BE.rows();
+    jakob.resize(3*m, 3*m);
+
+
+    MatrixXd  U, CBase; MatrixXi BEBase;        
+    forward2(a, U, CBase, BEBase, false);
+
+    double EPS = 1e-7;
+    for (int i = 0; i < 3*m; i++) {
+        a[i] += EPS;
+    
+        MatrixXd CJ; MatrixXi BEJ;        
+        forward2(a, U, CJ, BEJ, false);
+
+        a[i] -= EPS;
+
+        jakob.block(0, i, m, 1) = (CJ.col(0) - CBase.col(0)) / EPS;
+        jakob.block(m, i, m, 1) = (CJ.col(1) - CBase.col(1)) / EPS;
+        jakob.block(2*m, i, m, 1) = (CJ.col(2) - CBase.col(2)) / EPS;
+
+    }
+    
+}
+
+
+
+// E = sum ||x_i(a) - x_i_target||^2 
+// a = (theta_1x, theta1y, theta1z, theta2x,...)
+void calc_dEda(const MatrixXd &CT_moved, VectorXd &dEda, VectorXd &a) {
+    MatrixXd  U, CBase; MatrixXi BEBase;        
+    forward2(a, U, CBase, BEBase, false);
+
+    MatrixXd dEdx = 2*(CBase - CT_moved); // m x 3
+
+    int m = dEdx.rows();
+    VectorXd dEdx_flat(m*3);
+    dEdx_flat.segment(0, m) = dEdx.col(0);
+    dEdx_flat.segment(m, m) = dEdx.col(1);
+    dEdx_flat.segment(2*m, m) = dEdx.col(2);
+
+    MatrixXd jakob; // dx(a)/da
+    jacobian_finite_diff(jakob, a);
+
+    dEda = jakob.transpose()*dEdx_flat;
+}
+
+int getSelectedBone() {
+    if (!dragging) return 0;
+    // we convert the selected point index 
+    // into the bone whichs tip is the selected point
+    for (int i = 0; i < BE.rows(); i++) {
+        if (C.row(BE(i,1))  == C.row(selected))
+            return i;
+    }
+    throw std::invalid_argument( "The selected point should always be of a joint");
+}
+
+void optim(Viewer &viewer) {
+    int bone = getSelectedBone();
+
+
+    VectorXd a(3*BE.rows()); a.setZero();
+
+    MatrixXd  U, CBase; MatrixXi BEBase;        
+    forward2(a, U, CBase, BEBase, false);
+
+    MatrixXd CT_moved = CBase; 
+
+    CT_moved.row(BEBase(bone, 1)) = moving_point;
+
+    cout << "Cbase: " << endl;
+    cout << CBase << endl;
+    cout << "CT moved: " << endl;
+    cout << CT_moved << endl;
+    cout << "CBase - CT_moved " << endl;
+    cout << (CBase - CT_moved) << endl;
+    double loss = (CBase - CT_moved).array().pow(2).sum();
+    cout << "loss before: " << loss << endl;
+
+    int ITER_MAX = 50;
+    double sigma = 1;
+    for (int iter = 0; iter < ITER_MAX; iter++) {
+        VectorXd dEda;
+        calc_dEda(CT_moved, dEda, a);   
+        a  = a - sigma*dEda;
+    }
+
+    forward2(a, U, CBase, BEBase, false);
+    cout << (CBase - CT_moved) << endl;
+    loss = (CBase - CT_moved).array().pow(2).sum();
+    cout << "loss after: " << loss << endl;
+    CT = CBase;
+    BET = BEBase;
+}
+
+VectorXd a;
+
+void new_mesh(Viewer &viewer) {
+    // transformations
+
+    if (a.rows() == 0) {
+        a.resize(BE.rows()*3); a.setZero();
+    }
+
+    a[selected*3 + 2] = igl::PI*0.3*(++moved);
+
+    MatrixXd  U;
+    forward2(a, U, CT, BET, true);
 
     // lbs
-    MatrixXd U = M*T;
     MatrixXd UN;
     per_face_normals(U,F,UN);
 
     // Also deform skeleton edges
-    MatrixXd CT;
-    MatrixXi BET;
-    igl::deform_skeleton(C, BE, T, CT, BET);
+    // this basically just applies each transformation in T 
+    // to the 2 joint endpoints it concerns in C
+    //igl::deform_skeleton(C, BE, T, CT, BET);
 
     viewer.data().clear();
     viewer.data().set_mesh(U, F);
     viewer.data().set_normals(UN);
-    viewer.data().set_edges(CT, BET, sea_green);
-    viewer.data().set_points(CT, RowVector3d(0,1,0.5));
-
-
 }
 
 
@@ -121,8 +271,18 @@ bool key_down(Viewer &viewer, unsigned char key, int mods) {
 }
 
 bool pre_draw(Viewer &viewer) {
-
     set_color(viewer);
+
+    //clear points and lines
+    viewer.data().set_points(Eigen::MatrixXd::Zero(0,3), Eigen::MatrixXd::Zero(0,3));
+    viewer.data().set_edges(Eigen::MatrixXd::Zero(0,3), Eigen::MatrixXi::Zero(0,3), Eigen::MatrixXd::Zero(0,3));
+
+    viewer.data().set_edges(CT, BET, sea_green);
+    viewer.data().set_points(CT, RowVector3d(0,1,0.5));
+
+    viewer.data().add_points(moving_point, RowVector3d(1,0,0));
+//    MatrixXi edg(1, 2); edg.row(0) = BET.row(getSelectedBone());
+ //   viewer.data().add_edges(CT, edg,  RowVector3d(1,0,0));
 }
 
 
@@ -169,55 +329,91 @@ Quaterniond computeRotation(Viewer &viewer, int mouse_x, int from_x, int mouse_y
     return q;
 }
 
-bool mouse_move(Viewer& viewer, int mouse_x, int mouse_y) {
-    if (picked_boned) {
-        computeRotation(viewer, mouse_x, down_mouse_x,  mouse_y,  down_mouse_y);
+bool mouse_move(Viewer& viewer, int mouse_x_, int mouse_y_) {
+
+    if (dragging) {
+        //computeRotation(viewer, mouse_x_, mouse_x,  mouse_y_,  mouse_y);
+
+        Vector3d mouse_now(mouse_x_, viewer.core.viewport(3) - mouse_y_, mouse_z);
+        Vector3d mouse_before(mouse_x, viewer.core.viewport(3) - mouse_y, mouse_z);
+
+        Vector3d before, now;
+        unproject(mouse_before, viewer.core.view, viewer.core.proj, viewer.core.viewport, before);
+        unproject(mouse_now, viewer.core.view, viewer.core.proj, viewer.core.viewport, now);
+
+        moving_point += (now - before).transpose();
+
     }
+
+
+
+
+    mouse_x = mouse_x_;
+    mouse_y = mouse_y_;
 
     return false;
 }
 
 bool mouse_up(Viewer& viewer, int button, int modifier) {
-    picked_boned = false;
+    if (dragging)
+        optim(viewer);  
+    dragging = false;
+
+
 }
 
 bool mouse_down(Viewer& viewer, int button, int modifier) {
-    down_mouse_x = viewer.current_mouse_x;
-    down_mouse_y = viewer.current_mouse_y;
-
     selected = 0;
-    picked_boned = false;
 
-    double x = viewer.current_mouse_x;
-    double y = viewer.core.viewport(3) - viewer.current_mouse_y;
+    double x = mouse_x;
+    double y = viewer.core.viewport(3) - mouse_y;
 
     int fid, vi = -1;
     Vector3d baryC;
-    if(unproject_onto_mesh(Eigen::Vector2f(down_mouse_x,y), viewer.core.view,
+    if(unproject_onto_mesh(Eigen::Vector2f(x,y), viewer.core.view,
                               viewer.core.proj, viewer.core.viewport, V, F, fid, baryC)) {
 
         MatrixXd coord;
         igl::project(C, viewer.core.view, viewer.core.proj,viewer.core.viewport, coord);
 
-        coord.col(2).setZero();
-
-
-
-        cout << "x: " << x << " y: " << y << endl;
-        cout << "coords: " << endl;
-        cout << coord << endl;
-
-        MatrixXd diff = coord.rowwise() - RowVector3d(x, y, 0);
-        cout << diff << endl;
-
-        (diff.rowwise().squaredNorm().minCoeff(&selected));
-
-        picked_boned = true;
-
+        RowVector3d curr_mouse(x, y, 0);
+        VectorXd diff = (coord.rowwise() - curr_mouse).rowwise().norm();
+        
+        diff.minCoeff(&selected);
+        mouse_z = C(selected, 2);
+        moving_point = CT.row(selected);
+        dragging = true;
         return true;
   } else {
     return false;
   }
+
+}
+
+void menu(Viewer &viewer) {
+  igl::opengl::glfw::imgui::ImGuiMenu menu;
+  viewer.plugins.push_back(&menu);
+
+  menu.callback_draw_viewer_menu = [&]() {
+    // Draw parent menu content
+    menu.draw_viewer_menu();
+
+    // Add new group
+    if (ImGui::CollapsingHeader("Deformation Controls", ImGuiTreeNodeFlags_DefaultOpen)) {
+
+          if (ImGui::Button("Clear Selection", ImVec2(-1,0))) {
+
+          }
+
+          if (ImGui::Button("Apply Selection", ImVec2(-1,0))) {
+            
+          }
+
+          if (ImGui::Button("Clear Constraints", ImVec2(-1,0))) {
+            
+          }
+    }
+  };
 
 }
 
@@ -280,9 +476,13 @@ int main(int argc, char *argv[]) {
     cout << C << endl;
     cout << BE << endl;
 
+    CT = C;
+    BET = BE;
 
     // Plot the mesh
     igl::opengl::glfw::Viewer viewer;
+
+    //menu(viewer);
 
     // set callbacks 
     viewer.callback_key_down = &key_down;
@@ -293,8 +493,6 @@ int main(int argc, char *argv[]) {
     // set mesh
     viewer.data().set_mesh(V, F);
     set_color(viewer);
-    viewer.data().set_edges(C, BE, sea_green);
-    viewer.data().set_points(C, RowVector3d(0,1,0.5));
     viewer.data().show_lines = false;
     viewer.data().show_overlay_depth = false;
     viewer.data().line_width = 1;

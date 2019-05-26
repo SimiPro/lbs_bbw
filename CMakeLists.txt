@@ -6,6 +6,7 @@ set(CMAKE_MODULE_PATH ${CMAKE_MODULE_PATH} ${CMAKE_CURRENT_SOURCE_DIR}/cmake)
 # libigl
 option(LIBIGL_WITH_OPENGL            "Use OpenGL"         ON)
 option(LIBIGL_WITH_OPENGL_GLFW       "Use GLFW"           ON)
+option(LIBIGL_WITH_OPENGL_GLFW_IMGUI "Use ImGui"          ON)
 option(LIBIGL_WITH_TETGEN            "Use Tetgen"         ON)
 option(LIBIGL_WITH_MOSEK             "Use MOSEK"          ON)
 option(LIBIGL_WITH_CGAL              "Use CGAL"           ON)
@@ -16,6 +17,6 @@ find_package(LIBIGL REQUIRED QUIET)
 # Add your project files
 file(GLOB SRCFILES *.cpp)
 add_executable(${PROJECT_NAME}_bin ${SRCFILES})
-target_link_libraries(${PROJECT_NAME}_bin igl::core igl::opengl_glfw igl::opengl igl::tetgen igl::cgal)
+target_link_libraries(${PROJECT_NAME}_bin igl::core igl::opengl_glfw igl::opengl igl::tetgen igl::cgal igl::opengl_glfw_imgui)
 
 #cmake .. -DCMAKE_BUILD_TYPE=Release -DMOSEK_INCLUDE_DIR=/home/simi/Downloads/mosektoolslinux64x86/mosek/9.0/tools/platform/linux64x86/h -DMOSEK_LIBRARIES=/home/simi/Downloads/mosektoolslinux64x86/mosek/9.0/tools/platform/linux64x86/bin
