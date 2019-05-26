@@ -247,7 +247,7 @@ void optim(Viewer &viewer, VectorXd &a) {
     cout << "loss before: " << loss << endl;
 
 
-    int ITER_MAX = 200;
+    int ITER_MAX = 50;
     double sigma = 0.08;
     for (int iter = 0; iter < ITER_MAX; iter++) {
         VectorXd dEda;
@@ -371,6 +371,12 @@ bool mouse_move(Viewer& viewer, int mouse_x_, int mouse_y_) {
 
         moving_point += (now - before).transpose();
 
+        if (a.rows() == 0) {
+            a.resize(BE.rows()*3); a.setZero();
+        }
+        if (dragging)
+            optim(viewer, a);  
+
     }
 
 
@@ -386,7 +392,7 @@ bool mouse_up(Viewer& viewer, int button, int modifier) {
     if (a.rows() == 0) {
         a.resize(BE.rows()*3); a.setZero();
     }
-    if (dragging)
+    if (dragging && false)
         optim(viewer, a);  
     dragging = false;
 
