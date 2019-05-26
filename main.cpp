@@ -232,11 +232,9 @@ void new_mesh(Viewer &viewer, VectorXd &a) {
     viewer.data().set_normals(UN);
 }
 
-void optim(Viewer &viewer) {
+void optim(Viewer &viewer, VectorXd &a) {
 //    int bone = getSelectedBone();
 
-
-    VectorXd a(3*BE.rows()); a.setZero();
 
     MatrixXd  U, CBase; MatrixXi BEBase;        
     forward2(a, U, CBase, BEBase, false);
@@ -248,13 +246,13 @@ void optim(Viewer &viewer) {
     double loss = (CBase - CT_moved).array().pow(2).sum();
     cout << "loss before: " << loss << endl;
 
+
     int ITER_MAX = 200;
     double sigma = 0.08;
     for (int iter = 0; iter < ITER_MAX; iter++) {
         VectorXd dEda;
         calc_dEda(CT_moved, dEda, a);  
         cout << "dEda norm: " << dEda.norm() << endl;
-        
         a  = a - sigma*dEda;
     }
     
@@ -287,8 +285,10 @@ bool key_down(Viewer &viewer, unsigned char key, int mods) {
       moved = 0;
       break;
     case ' ':
-        if (a.rows() == 0)
-            a.resize(BE.rows()*3); a.setZero();
+        if (a.rows() == 0)  {
+            a.resize(BE.rows()*3); 
+            a.setZero();
+        }
         
         a[selected*3 + 2] = igl::PI*0.3*(++moved);
         new_mesh(viewer, a);
@@ -383,8 +383,11 @@ bool mouse_move(Viewer& viewer, int mouse_x_, int mouse_y_) {
 }
 
 bool mouse_up(Viewer& viewer, int button, int modifier) {
+    if (a.rows() == 0) {
+        a.resize(BE.rows()*3); a.setZero();
+    }
     if (dragging)
-        optim(viewer);  
+        optim(viewer, a);  
     dragging = false;
 
 
