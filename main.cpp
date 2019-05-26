@@ -249,7 +249,7 @@ void optim(Viewer &viewer) {
     cout << "loss before: " << loss << endl;
 
     int ITER_MAX = 200;
-    double sigma = 0.05;
+    double sigma = 0.08;
     for (int iter = 0; iter < ITER_MAX; iter++) {
         VectorXd dEda;
         calc_dEda(CT_moved, dEda, a);  
