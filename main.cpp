@@ -94,6 +94,31 @@ void forward(const double degree, const Vector3d &angle,  MatrixXd &T) {
     forward_kinematics(C, BE, P, dQ, dT, T);
 }
 
+
+void myDeform(const Eigen::MatrixXd & C,
+    const Eigen::MatrixXi & BE,
+    const Eigen::MatrixXd & T,
+    Eigen::MatrixXd & CT,
+    Eigen::MatrixXi & BET) {
+
+    CT.resize(C.rows(), C.cols());
+    BET.resize(BE.rows(), 2);
+    // only transform each point once
+    // since we are kin forward we should only have 
+    // to have once
+    for(int e = 0; e < BE.rows(); e++) {
+        Matrix4d t;
+        t << T.block(e*4,0,4,3).transpose(), 0,0,0,0;
+        Affine3d a;
+        a.matrix() = t;
+        Vector3d c0 = C.row(BE(e, 0));
+        Vector3d c1 = C.row(BE(e, 1));
+        CT.row(BE(e, 0)) =   a * c0;
+        CT.row(BE(e, 1)) =   a * c1;
+    }
+    BET = BET;
+}
+
 // a is a vector that holds all thetas stacked 
 // theta_11 = degree of theta_11 rotation around x axis of bone 1
 // , theta_12, degree of theta_12 rotation around y axis of bone 1
@@ -117,15 +142,16 @@ void forward2(const VectorXd &a, MatrixXd &U, MatrixXd &CT_new, MatrixXi &BET_ne
     forward_kinematics(C, BE, P, dQ, dT, T);
     if (calc_u)
         U = M*T;
-    igl::deform_skeleton(C, BE, T, CT_new, BET_new);
+    myDeform(C, BE, T, CT_new, BET_new);
+
 }
 
 bool first = true;
 
 
 void jacobian_finite_diff(MatrixXd &jakob, VectorXd &a) {
-    int m = BE.rows();
-    jakob.resize(3*m, 3*m);
+    int n = C.rows(), m = BE.rows();
+    jakob.resize(3*n, 3*m);
 
 
     MatrixXd  U, CBase; MatrixXi BEBase;        
@@ -140,9 +166,9 @@ void jacobian_finite_diff(MatrixXd &jakob, VectorXd &a) {
 
         a[i] -= EPS;
 
-        jakob.block(0, i, m, 1) = (CJ.col(0) - CBase.col(0)) / EPS;
-        jakob.block(m, i, m, 1) = (CJ.col(1) - CBase.col(1)) / EPS;
-        jakob.block(2*m, i, m, 1) = (CJ.col(2) - CBase.col(2)) / EPS;
+        jakob.block(0, i, n, 1) = (CJ.col(0) - CBase.col(0)) / EPS;
+        jakob.block(n, i, n, 1) = (CJ.col(1) - CBase.col(1)) / EPS;
+        jakob.block(2*n, i, n, 1) = (CJ.col(2) - CBase.col(2)) / EPS;
 
     }
     
@@ -158,11 +184,12 @@ void calc_dEda(const MatrixXd &CT_moved, VectorXd &dEda, VectorXd &a) {
 
     MatrixXd dEdx = 2*(CBase - CT_moved); // m x 3
 
-    int m = dEdx.rows();
-    VectorXd dEdx_flat(m*3);
-    dEdx_flat.segment(0, m) = dEdx.col(0);
-    dEdx_flat.segment(m, m) = dEdx.col(1);
-    dEdx_flat.segment(2*m, m) = dEdx.col(2);
+    int n = C.rows(), m = BE.rows();
+
+    VectorXd dEdx_flat(n*3);
+    dEdx_flat.segment(0, n) = dEdx.col(0);
+    dEdx_flat.segment(n, n) = dEdx.col(1);
+    dEdx_flat.segment(2*n, n) = dEdx.col(2);
 
     MatrixXd jakob; // dx(a)/da
     jacobian_finite_diff(jakob, a);
@@ -181,8 +208,9 @@ int getSelectedBone() {
     throw std::invalid_argument( "The selected point should always be of a joint");
 }
 
+
 void optim(Viewer &viewer) {
-    int bone = getSelectedBone();
+//    int bone = getSelectedBone();
 
 
     VectorXd a(3*BE.rows()); a.setZero();
@@ -192,7 +220,7 @@ void optim(Viewer &viewer) {
 
     MatrixXd CT_moved = CBase; 
 
-    CT_moved.row(BEBase(bone, 1)) = moving_point;
+    CT_moved.row(selected) = moving_point;
 
     cout << "Cbase: " << endl;
     cout << CBase << endl;
@@ -203,7 +231,7 @@ void optim(Viewer &viewer) {
     double loss = (CBase - CT_moved).array().pow(2).sum();
     cout << "loss before: " << loss << endl;
 
-    int ITER_MAX = 50;
+    int ITER_MAX = 10;
     double sigma = 1;
     for (int iter = 0; iter < ITER_MAX; iter++) {
         VectorXd dEda;
@@ -232,6 +260,8 @@ void new_mesh(Viewer &viewer) {
 
     MatrixXd  U;
     forward2(a, U, CT, BET, true);
+
+    cout << BET << endl;
 
     // lbs
     MatrixXd UN;
