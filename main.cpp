@@ -59,10 +59,22 @@ const RowVector3d sea_green(70./255.,252./255.,167./255.);
 
 int v_spec = -1;
 
+int getSelectedBone() {
+    // we convert the selected point index
+    // into the bone whichs tip is the selected point
+    for (int i = 0; i < BE.rows(); i++) {
+        if (C.row(BE(i,1))  == C.row(selected))
+            return i;
+    }
+    return 0;
+    throw std::invalid_argument( "The selected point should always be of a joint");
+}
+
 void set_color(igl::opengl::glfw::Viewer &viewer) {
   MatrixXd C(0,3);
 
-  jet(W.col(selected).eval(),true,C);
+  int bone = getSelectedBone();
+  jet(W.col(bone).eval(),true,C);
 
   if (v_spec != -1) {
     C.row(v_spec) = RowVector3d(1,0,0);
@@ -116,7 +128,7 @@ void myDeform(const Eigen::MatrixXd & C,
         CT.row(BE(e, 0)) =   a * c0;
         CT.row(BE(e, 1)) =   a * c1;
     }
-    BET = BET;
+    BET = BE;
 }
 
 // a is a vector that holds all thetas stacked 
@@ -197,67 +209,10 @@ void calc_dEda(const MatrixXd &CT_moved, VectorXd &dEda, VectorXd &a) {
     dEda = jakob.transpose()*dEdx_flat;
 }
 
-int getSelectedBone() {
-    if (!dragging) return 0;
-    // we convert the selected point index 
-    // into the bone whichs tip is the selected point
-    for (int i = 0; i < BE.rows(); i++) {
-        if (C.row(BE(i,1))  == C.row(selected))
-            return i;
-    }
-    throw std::invalid_argument( "The selected point should always be of a joint");
-}
 
 
-void optim(Viewer &viewer) {
-//    int bone = getSelectedBone();
-
-
-    VectorXd a(3*BE.rows()); a.setZero();
-
-    MatrixXd  U, CBase; MatrixXi BEBase;        
-    forward2(a, U, CBase, BEBase, false);
-
-    MatrixXd CT_moved = CBase; 
-
-    CT_moved.row(selected) = moving_point;
-
-    cout << "Cbase: " << endl;
-    cout << CBase << endl;
-    cout << "CT moved: " << endl;
-    cout << CT_moved << endl;
-    cout << "CBase - CT_moved " << endl;
-    cout << (CBase - CT_moved) << endl;
-    double loss = (CBase - CT_moved).array().pow(2).sum();
-    cout << "loss before: " << loss << endl;
-
-    int ITER_MAX = 10;
-    double sigma = 1;
-    for (int iter = 0; iter < ITER_MAX; iter++) {
-        VectorXd dEda;
-        calc_dEda(CT_moved, dEda, a);   
-        a  = a - sigma*dEda;
-    }
-
-    forward2(a, U, CBase, BEBase, false);
-    cout << (CBase - CT_moved) << endl;
-    loss = (CBase - CT_moved).array().pow(2).sum();
-    cout << "loss after: " << loss << endl;
-    CT = CBase;
-    BET = BEBase;
-}
-
-VectorXd a;
-
-void new_mesh(Viewer &viewer) {
+void new_mesh(Viewer &viewer, VectorXd &a) {
     // transformations
-
-    if (a.rows() == 0) {
-        a.resize(BE.rows()*3); a.setZero();
-    }
-
-    a[selected*3 + 2] = igl::PI*0.3*(++moved);
-
     MatrixXd  U;
     forward2(a, U, CT, BET, true);
 
@@ -277,6 +232,45 @@ void new_mesh(Viewer &viewer) {
     viewer.data().set_normals(UN);
 }
 
+void optim(Viewer &viewer) {
+//    int bone = getSelectedBone();
+
+
+    VectorXd a(3*BE.rows()); a.setZero();
+
+    MatrixXd  U, CBase; MatrixXi BEBase;        
+    forward2(a, U, CBase, BEBase, false);
+
+    MatrixXd CT_moved = CBase; 
+
+    CT_moved.row(selected) = moving_point;
+
+    double loss = (CBase - CT_moved).array().pow(2).sum();
+    cout << "loss before: " << loss << endl;
+
+    int ITER_MAX = 200;
+    double sigma = 0.05;
+    for (int iter = 0; iter < ITER_MAX; iter++) {
+        VectorXd dEda;
+        calc_dEda(CT_moved, dEda, a);  
+        cout << "dEda norm: " << dEda.norm() << endl;
+        
+        a  = a - sigma*dEda;
+    }
+    
+    forward2(a, U, CBase, BEBase, true);
+    loss = (CBase - CT_moved).array().pow(2).sum();
+    cout << "loss after: " << loss << endl;
+    CT = CBase;
+    BET = BEBase;
+
+    new_mesh(viewer, a);
+
+}
+
+
+
+VectorXd a;
 
 bool key_down(Viewer &viewer, unsigned char key, int mods) {
   switch(key) {
@@ -293,7 +287,11 @@ bool key_down(Viewer &viewer, unsigned char key, int mods) {
       moved = 0;
       break;
     case ' ':
-        new_mesh(viewer);
+        if (a.rows() == 0)
+            a.resize(BE.rows()*3); a.setZero();
+        
+        a[selected*3 + 2] = igl::PI*0.3*(++moved);
+        new_mesh(viewer, a);
         break;
   }
 
