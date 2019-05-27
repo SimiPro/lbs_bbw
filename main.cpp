@@ -154,8 +154,26 @@ void new_mesh(Viewer &viewer, VectorXd &a) {
     viewer.data().set_normals(UN);
 }
 
-void optim(Viewer &viewer, VectorXd &a) {
+void optim_com(Viewer &viewer, VectorXd &a) {
 //    int bone = getSelectedBone();
+    if (a.rows() == 0) {
+        a.resize(3*BE.rows()); a.setZero();
+    }
+
+    RowVector3d com_target = CT.row(balance_joint);
+
+    CoMEnergyFunction comOptim(C, F, BE, M, P, com_target); 
+    cout << "loss before: " << comOptim.evaluate(a) << endl;
+
+    GradientDescentMomentum funcOpt(25, 1e-5, 10);
+    funcOpt.minimize(&comOptim, a);
+    
+    cout << "loss after: " << comOptim.evaluate(a) << endl;
+
+    new_mesh(viewer, a);
+}
+
+void optim(Viewer &viewer, VectorXd &a) {
 
     MatrixXd  U, CTarget;
     EnergyFunction kinematics(C, BE, M, P, CTarget);
@@ -171,10 +189,10 @@ void optim(Viewer &viewer, VectorXd &a) {
     cout << "loss after: " << kinOptim.evaluate(a) << endl;
 
     new_mesh(viewer, a);
-
 }
 
 VectorXd a;
+
 
 bool key_down(Viewer &viewer, unsigned char key, int mods) {
   switch(key) {
@@ -202,6 +220,9 @@ bool key_down(Viewer &viewer, unsigned char key, int mods) {
     case '1':
         animate = !animate;
         viewer.core.is_animating = !viewer.core.is_animating;
+        break;
+
+    case '2':
 
         break;
 
@@ -223,7 +244,8 @@ bool pre_draw(Viewer &viewer) {
         viewer.data().set_points(CT, RowVector3d(0,1,0.5));
 
         viewer.data().add_points(moving_point, RowVector3d(1,0,0));
-        viewer.data().add_points(CT.row(balance_joint), RowVector3d(1,1,1));
+        if (balance_joint != -1)
+            viewer.data().add_points(CT.row(balance_joint), RowVector3d(1,1,1));
         update_com();
         viewer.data().add_points(com, RowVector3d(0,0,0));
     } else {
@@ -333,9 +355,6 @@ bool mouse_down(Viewer& viewer, int button, int modifier) {
 
 }
 
-void optimizeCOM() {
-
-}
 
 int main(int argc, char *argv[]) {
     string filename = argv[1];
@@ -410,7 +429,7 @@ int main(int argc, char *argv[]) {
         }
 
         if (ImGui::Button("Optimize CoM", ImVec2(-1, 0))) {
-            optimizeCOM();
+            optim_com(viewer, a);
         }
           
     };
