@@ -1,6 +1,8 @@
 #include <igl/opengl/glfw/Viewer.h>
 #include <igl/opengl/glfw/imgui/ImGuiMenu.h>
 #include <igl/opengl/glfw/imgui/ImGuiHelpers.h>
+#include <imgui/imgui.h>
+
 
 #include <igl/read_triangle_mesh.h>
 #include <igl/readTGF.h>
@@ -23,7 +25,8 @@
 
 #include "kin.h"
 #include "optLib/GradientDescentMinimizer.h"
-
+#include "mass_props.h"
+#include "com_energy.h"
 
 using namespace Eigen;
 using namespace std;
@@ -46,6 +49,9 @@ VectorXi P; // list of point handles indexing C
 MatrixXd CT;
 MatrixXi BET;
 
+// COM
+RowVector3d com;
+
 
 // 
 RowVector3d moving_point;
@@ -64,7 +70,8 @@ const RowVector3d sea_green(70./255.,252./255.,167./255.);
 
 int v_spec = -1;
 
-
+bool set_balance_joint = false;
+int balance_joint = -1;
 
 
 /// Animation stuff
@@ -97,6 +104,12 @@ void set_color(igl::opengl::glfw::Viewer &viewer) {
   viewer.data().set_colors(C);
 }
 
+
+void update_com() {
+    VectorXd s10;
+    props(V, F, 0.1,  s10);
+    com = getCoM(s10).transpose();
+}
 
 
 void addPose(const VectorXd &a) {
@@ -210,6 +223,9 @@ bool pre_draw(Viewer &viewer) {
         viewer.data().set_points(CT, RowVector3d(0,1,0.5));
 
         viewer.data().add_points(moving_point, RowVector3d(1,0,0));
+        viewer.data().add_points(CT.row(balance_joint), RowVector3d(1,1,1));
+        update_com();
+        viewer.data().add_points(com, RowVector3d(0,0,0));
     } else {
         // Find pose interval
         int pose_step = 1;
@@ -303,6 +319,12 @@ bool mouse_down(Viewer& viewer, int button, int modifier) {
         diff.minCoeff(&selected);
         mouse_z = CT(selected, 2);
         moving_point = CT.row(selected);
+
+        if (set_balance_joint) {
+            balance_joint = selected;
+            set_balance_joint = false;
+        }
+
         dragging = true;
         return true;
   } else {
@@ -311,33 +333,9 @@ bool mouse_down(Viewer& viewer, int button, int modifier) {
 
 }
 
-void menu(Viewer &viewer) {
-  igl::opengl::glfw::imgui::ImGuiMenu menu;
-  viewer.plugins.push_back(&menu);
-
-  menu.callback_draw_viewer_menu = [&]() {
-    // Draw parent menu content
-    menu.draw_viewer_menu();
-
-    // Add new group
-    if (ImGui::CollapsingHeader("Deformation Controls", ImGuiTreeNodeFlags_DefaultOpen)) {
-
-          if (ImGui::Button("Clear Selection", ImVec2(-1,0))) {
-
-          }
-
-          if (ImGui::Button("Apply Selection", ImVec2(-1,0))) {
-            
-          }
-
-          if (ImGui::Button("Clear Constraints", ImVec2(-1,0))) {
-            
-          }
-    }
-  };
+void optimizeCOM() {
 
 }
-
 
 int main(int argc, char *argv[]) {
     string filename = argv[1];
@@ -403,7 +401,20 @@ int main(int argc, char *argv[]) {
     // Plot the mesh
     igl::opengl::glfw::Viewer viewer;
 
-    //menu(viewer);
+    igl::opengl::glfw::imgui::ImGuiMenu menu;
+    viewer.plugins.push_back(&menu);
+
+    menu.callback_draw_viewer_menu = [&]() {
+        if (ImGui::Button("Set balancing joint", ImVec2(-1, 0))) {
+            set_balance_joint = true;
+        }
+
+        if (ImGui::Button("Optimize CoM", ImVec2(-1, 0))) {
+            optimizeCOM();
+        }
+          
+    };
+
 
     // set callbacks 
     viewer.callback_key_down = &key_down;
