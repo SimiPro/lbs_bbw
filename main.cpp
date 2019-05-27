@@ -46,6 +46,7 @@ VectorXi P; // list of point handles indexing C
 MatrixXd CT;
 MatrixXi BET;
 
+
 // 
 RowVector3d moving_point;
 
@@ -62,6 +63,16 @@ bool dragging = false;
 const RowVector3d sea_green(70./255.,252./255.,167./255.);
 
 int v_spec = -1;
+
+
+
+
+/// Animation stuff
+vector<RotationList > poses;
+int curr_pose = 0;
+bool animate = false;
+
+/// Animation stuff end
 
 int getSelectedBone() {
     // we convert the selected point index
@@ -87,25 +98,46 @@ void set_color(igl::opengl::glfw::Viewer &viewer) {
 }
 
 
+
+void addPose(const VectorXd &a) {
+    cout << "add pose " << endl;
+    int m = BE.rows();
+    RotationList dQ(m, Quaterniond::Identity()); //   dQ  #BE list of relative rotations
+    for (int i = 0; i < m; i++) {
+        const Quaterniond rotX(AngleAxisd(a[3*i + 0], Vector3d(1, 0, 0)));
+        const Quaterniond rotY(AngleAxisd(a[3*i + 1], Vector3d(0, 1, 0)));
+        const Quaterniond rotZ(AngleAxisd(a[3*i + 2], Vector3d(0, 0, 1)));
+        dQ[i] = rotX*rotY*rotZ;
+        //dQ[i] = rotX;
+    }
+    poses.push_back(dQ);
+}
+
+
 void new_mesh(Viewer &viewer, VectorXd &a) {
     // transformations
 
-    MatrixXd  U, CEmpty;
+    MatrixXd  CEmpty;
 
     EnergyFunction kinematics(C, BE, M, P, CEmpty);
-    kinematics.forward2(a, U, CT, true);
+    kinematics.forward2(a, V, CT, true);
     
     // lbs
     MatrixXd UN;
-    per_face_normals(U,F,UN);
+    per_face_normals(V,F,UN);
 
     // Also deform skeleton edges
     // this basically just applies each transformation in T 
     // to the 2 joint endpoints it concerns in C
     //igl::deform_skeleton(C, BE, T, CT, BET);
 
+
+
+    addPose(a);
+
+
     viewer.data().clear();
-    viewer.data().set_mesh(U, F);
+    viewer.data().set_mesh(V, F);
     viewer.data().set_normals(UN);
 }
 
@@ -120,7 +152,7 @@ void optim(Viewer &viewer, VectorXd &a) {
     EnergyFunction kinOptim(C, BE, M, P, CTarget);
     cout << "loss before: " << kinOptim.evaluate(a) << endl;
 
-    GradientDescentVariableStep funcOpt(50, 1e-5, 15);
+    GradientDescentMomentum funcOpt(25, 1e-5, 10);
     funcOpt.minimize(&kinOptim, a);
     
     cout << "loss after: " << kinOptim.evaluate(a) << endl;
@@ -128,8 +160,6 @@ void optim(Viewer &viewer, VectorXd &a) {
     new_mesh(viewer, a);
 
 }
-
-
 
 VectorXd a;
 
@@ -156,68 +186,59 @@ bool key_down(Viewer &viewer, unsigned char key, int mods) {
         a[selected*3 + 2] = igl::PI*0.3*(++moved);
         new_mesh(viewer, a);
         break;
+    case '1':
+        animate = !animate;
+        viewer.core.is_animating = !viewer.core.is_animating;
+
+        break;
+
   }
 
   return true;
 }
 
 bool pre_draw(Viewer &viewer) {
-    set_color(viewer);
-
     //clear points and lines
     viewer.data().set_points(Eigen::MatrixXd::Zero(0,3), Eigen::MatrixXd::Zero(0,3));
     viewer.data().set_edges(Eigen::MatrixXd::Zero(0,3), Eigen::MatrixXi::Zero(0,3), Eigen::MatrixXd::Zero(0,3));
 
-    viewer.data().set_edges(CT, BET, sea_green);
-    viewer.data().set_points(CT, RowVector3d(0,1,0.5));
+    if (!animate) {
+        set_color(viewer);
 
-    viewer.data().add_points(moving_point, RowVector3d(1,0,0));
+
+        viewer.data().set_edges(CT, BET, sea_green);
+        viewer.data().set_points(CT, RowVector3d(0,1,0.5));
+
+        viewer.data().add_points(moving_point, RowVector3d(1,0,0));
+    } else {
+        // Find pose interval
+        int pose_step = 1;
+        if (curr_pose >= poses.size()-pose_step) curr_pose = 0;
+        RotationList this_pose = poses[curr_pose];
+        /*
+        
+        RotationList next_pose = poses[curr_pose + 1];
+
+        // Interpolate pose and identity
+        RotationList anim_pose(poses[begin].size());
+        for(int e = 0;e < curr_pose.size(); e++) {
+          anim_pose[e] = curr_pose[e].slerp(t, next_pose[e]);
+        }
+
+        */
+
+        // Propagate relative rotations via FK to retrieve absolute transformations
+        vector<Vector3d> dT(BE.rows(), Vector3d(0,0,0));   // dT  #BE list of relative translations
+        MatrixXd T;
+        forward_kinematics(C, BE, P, this_pose, dT, T);    
+        MatrixXd U = M*T;
+        viewer.data().set_vertices(U);
+        
+        curr_pose += pose_step;
+    }
+    return false;
 //    MatrixXi edg(1, 2); edg.row(0) = BET.row(getSelectedBone());
  //   viewer.data().add_edges(CT, edg,  RowVector3d(1,0,0));
-}
-
-
-
-Quaterniond computeRotation(Viewer &viewer, int mouse_x, int from_x, int mouse_y, int from_y) {
-
-    Matrix4f modelview = viewer.core.view;// * viewer.data().model;
-
-    //initialize a trackball around the handle that is being rotated
-    //the trackball has (approximately) width w and height h
-    double w = viewer.core.viewport[2]/8;
-    double h = viewer.core.viewport[3]/8;
-
-    Vector4f rotation;
-    rotation.setZero();
-    rotation[3] = 1.;
-    //project the given point on the handle(centroid)
-    RowVector3d selected_joint = C.row(selected);
-    Vector3f proj = igl::project(selected_joint.transpose().cast<float>().eval(),
-                             modelview, viewer.core.proj, viewer.core.viewport);
-    proj[1] = viewer.core.viewport[3] - proj[1];
-
-    //express the mouse points w.r.t the centroid
-    from_x -= proj[0]; mouse_x -= proj[0];
-    from_y -= proj[1]; mouse_y -= proj[1];
-
-    //shift so that the range is from 0-w and 0-h respectively (similarly to a standard viewport)
-    from_x += w/2; mouse_x += w/2;
-    from_y += h/2; mouse_y += h/2;
-
-    //get rotation from trackball
-    Vector4f drot = viewer.core.trackball_angle.coeffs();
-    Vector4f drot_conj;
-    igl::quat_conjugate(drot.data(), drot_conj.data());
-    igl::trackball(w, h, float(1.), rotation.data(), from_x, from_y, mouse_x, mouse_y, rotation.data());
-
-    
-    Quaterniond q(rotation[3], rotation[0], rotation[1], rotation[2]);
-
-    //cout << rot << endl;
-    std::cout << "This quaternion consists of a scalar " << q.w() << " and a vector " << std::endl << q.vec() << std::endl;
-
-
-    return q;
 }
 
 bool mouse_move(Viewer& viewer, int mouse_x_, int mouse_y_) {
@@ -274,13 +295,13 @@ bool mouse_down(Viewer& viewer, int button, int modifier) {
                               viewer.core.proj, viewer.core.viewport, V, F, fid, baryC)) {
 
         MatrixXd coord;
-        igl::project(C, viewer.core.view, viewer.core.proj,viewer.core.viewport, coord);
+        igl::project(CT, viewer.core.view, viewer.core.proj,viewer.core.viewport, coord);
 
         RowVector3d curr_mouse(x, y, 0);
         VectorXd diff = (coord.rowwise() - curr_mouse).rowwise().norm();
         
         diff.minCoeff(&selected);
-        mouse_z = C(selected, 2);
+        mouse_z = CT(selected, 2);
         moving_point = CT.row(selected);
         dragging = true;
         return true;
@@ -398,6 +419,8 @@ int main(int argc, char *argv[]) {
     viewer.data().line_width = 1;
     viewer.data().point_size = 10;
     viewer.core.set_rotation_type(igl::opengl::ViewerCore::ROTATION_TYPE_TRACKBALL);
+    viewer.core.is_animating = false;
+    viewer.core.animation_max_fps = 80;
     viewer.launch();
 
 

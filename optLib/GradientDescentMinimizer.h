@@ -113,6 +113,6 @@ protected:
 	}
 
 public:
-	double alpha = 0.5;
+	double alpha = 0.8;
 	mutable VectorXd gradient;
 };
