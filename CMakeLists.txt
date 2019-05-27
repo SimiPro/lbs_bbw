@@ -14,6 +14,8 @@ option(LIBIGL_WITH_CGAL              "Use CGAL"           ON)
 
 find_package(LIBIGL REQUIRED QUIET)
 
+add_subdirectory(optLib)
+
 # Add your project files
 file(GLOB SRCFILES *.cpp)
 add_executable(${PROJECT_NAME}_bin ${SRCFILES})

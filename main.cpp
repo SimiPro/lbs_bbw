@@ -21,6 +21,10 @@
 #include <igl/directed_edge_orientations.h>
 #include <igl/deform_skeleton.h>
 
+#include "kin.h"
+#include "optLib/GradientDescentMinimizer.h"
+
+
 using namespace Eigen;
 using namespace std;
 using namespace igl;
@@ -82,142 +86,15 @@ void set_color(igl::opengl::glfw::Viewer &viewer) {
   viewer.data().set_colors(C);
 }
 
-RotationList dQ(0, Quaterniond::Identity()); //   dQ  #BE list of relative rotations
-
-// angle should be (1,0,0) or (0,1,0) or (0,0,1)
-// degree would make sense to keep between 0, 360
-void forward(const double degree, const Vector3d &angle,  MatrixXd &T) {
-    //RotationList dQ(BE.rows(), Quaterniond::Identity());   //   dQ  #BE list of relative rotations
-    if (dQ.size() == 0) {
-        dQ.resize(BE.rows()); std::fill(dQ.begin(), dQ.end(), Quaterniond::Identity());
-    }
-    vector<Vector3d> dT(BE.rows(), Vector3d(0,0,0));   // dT  #BE list of relative translations
-
-    //const Quaterniond twist(AngleAxisd(igl::PI*0.3*(++moved), Vector3d(0,1,0)));
-    //const Quaterniond bend(AngleAxisd(-igl::PI*0.7,Vector3d(0,0,1)));
-    const Quaterniond relRot(AngleAxisd(degree, angle));
-        //dQ[selected] = rest_pose[selected]*twist*rest_pose[selected].conjugate();
-    dQ[selected] = relRot;
-    //dQ[3] = rest_pose[2]*bend*rest_pose[2].conjugate();
-    //dQ[2] = rest_pose[2]*twist*rest_pose[2].conjugate();
-    //dQ[3] = rest_pose[3]*twist*rest_pose[3].conjugate();
-
-
-    forward_kinematics(C, BE, P, dQ, dT, T);
-}
-
-
-void myDeform(const Eigen::MatrixXd & C,
-    const Eigen::MatrixXi & BE,
-    const Eigen::MatrixXd & T,
-    Eigen::MatrixXd & CT,
-    Eigen::MatrixXi & BET) {
-
-    CT.resize(C.rows(), C.cols());
-    BET.resize(BE.rows(), 2);
-    // only transform each point once
-    // since we are kin forward we should only have 
-    // to have once
-    for(int e = 0; e < BE.rows(); e++) {
-        Matrix4d t;
-        t << T.block(e*4,0,4,3).transpose(), 0,0,0,0;
-        Affine3d a;
-        a.matrix() = t;
-        Vector3d c0 = C.row(BE(e, 0));
-        Vector3d c1 = C.row(BE(e, 1));
-        CT.row(BE(e, 0)) =   a * c0;
-        CT.row(BE(e, 1)) =   a * c1;
-    }
-    BET = BE;
-}
-
-// a is a vector that holds all thetas stacked 
-// theta_11 = degree of theta_11 rotation around x axis of bone 1
-// , theta_12, degree of theta_12 rotation around y axis of bone 1
-// theta_13 
-void forward2(const VectorXd &a, MatrixXd &U, MatrixXd &CT_new, MatrixXi &BET_new, const bool calc_u) {
-    int m = BE.rows();
-    assert(a.size() == m*3);
-
-    RotationList dQ(m, Quaterniond::Identity()); //   dQ  #BE list of relative rotations
-    for (int i = 0; i < m; i++) {
-        const Quaterniond rotX(AngleAxisd(a[3*i + 0], Vector3d(1, 0, 0)));
-        const Quaterniond rotY(AngleAxisd(a[3*i + 1], Vector3d(0, 1, 0)));
-        const Quaterniond rotZ(AngleAxisd(a[3*i + 2], Vector3d(0, 0, 1)));
-        dQ[i] = rotX*rotY*rotZ;
-        //dQ[i] = rotX;
-    }
-
-    vector<Vector3d> dT(m, Vector3d(0,0,0));   // dT  #BE list of relative translations
-
-    MatrixXd T;
-    forward_kinematics(C, BE, P, dQ, dT, T);
-    if (calc_u)
-        U = M*T;
-    myDeform(C, BE, T, CT_new, BET_new);
-
-}
-
-bool first = true;
-
-
-void jacobian_finite_diff(MatrixXd &jakob, VectorXd &a) {
-    int n = C.rows(), m = BE.rows();
-    jakob.resize(3*n, 3*m);
-
-
-    MatrixXd  U, CBase; MatrixXi BEBase;        
-    forward2(a, U, CBase, BEBase, false);
-
-    double EPS = 1e-7;
-    for (int i = 0; i < 3*m; i++) {
-        a[i] += EPS;
-    
-        MatrixXd CJ; MatrixXi BEJ;        
-        forward2(a, U, CJ, BEJ, false);
-
-        a[i] -= EPS;
-
-        jakob.block(0, i, n, 1) = (CJ.col(0) - CBase.col(0)) / EPS;
-        jakob.block(n, i, n, 1) = (CJ.col(1) - CBase.col(1)) / EPS;
-        jakob.block(2*n, i, n, 1) = (CJ.col(2) - CBase.col(2)) / EPS;
-
-    }
-    
-}
-
-
-
-// E = sum ||x_i(a) - x_i_target||^2 
-// a = (theta_1x, theta1y, theta1z, theta2x,...)
-void calc_dEda(const MatrixXd &CT_moved, VectorXd &dEda, VectorXd &a) {
-    MatrixXd  U, CBase; MatrixXi BEBase;        
-    forward2(a, U, CBase, BEBase, false);
-
-    MatrixXd dEdx = 2*(CBase - CT_moved); // m x 3
-
-    int n = C.rows(), m = BE.rows();
-
-    VectorXd dEdx_flat(n*3);
-    dEdx_flat.segment(0, n) = dEdx.col(0);
-    dEdx_flat.segment(n, n) = dEdx.col(1);
-    dEdx_flat.segment(2*n, n) = dEdx.col(2);
-
-    MatrixXd jakob; // dx(a)/da
-    jacobian_finite_diff(jakob, a);
-
-    dEda = jakob.transpose()*dEdx_flat;
-}
-
-
 
 void new_mesh(Viewer &viewer, VectorXd &a) {
     // transformations
-    MatrixXd  U;
-    forward2(a, U, CT, BET, true);
 
-    cout << BET << endl;
+    MatrixXd  U, CEmpty;
 
+    EnergyFunction kinematics(C, BE, M, P, CEmpty);
+    kinematics.forward2(a, U, CT, true);
+    
     // lbs
     MatrixXd UN;
     per_face_normals(U,F,UN);
@@ -235,32 +112,18 @@ void new_mesh(Viewer &viewer, VectorXd &a) {
 void optim(Viewer &viewer, VectorXd &a) {
 //    int bone = getSelectedBone();
 
+    MatrixXd  U, CTarget;
+    EnergyFunction kinematics(C, BE, M, P, CTarget);
+    kinematics.forward2(a, U, CTarget, false);
+    CTarget.row(selected) = moving_point;
 
-    MatrixXd  U, CBase; MatrixXi BEBase;        
-    forward2(a, U, CBase, BEBase, false);
+    EnergyFunction kinOptim(C, BE, M, P, CTarget);
+    cout << "loss before: " << kinOptim.evaluate(a) << endl;
 
-    MatrixXd CT_moved = CBase; 
-
-    CT_moved.row(selected) = moving_point;
-
-    double loss = (CBase - CT_moved).array().pow(2).sum();
-    cout << "loss before: " << loss << endl;
-
-
-    int ITER_MAX = 50;
-    double sigma = 0.08;
-    for (int iter = 0; iter < ITER_MAX; iter++) {
-        VectorXd dEda;
-        calc_dEda(CT_moved, dEda, a);  
-        cout << "dEda norm: " << dEda.norm() << endl;
-        a  = a - sigma*dEda;
-    }
+    GradientDescentVariableStep funcOpt(50, 1e-5, 15);
+    funcOpt.minimize(&kinOptim, a);
     
-    forward2(a, U, CBase, BEBase, true);
-    loss = (CBase - CT_moved).array().pow(2).sum();
-    cout << "loss after: " << loss << endl;
-    CT = CBase;
-    BET = BEBase;
+    cout << "loss after: " << kinOptim.evaluate(a) << endl;
 
     new_mesh(viewer, a);
 
