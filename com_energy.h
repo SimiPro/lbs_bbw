@@ -1,6 +1,7 @@
 #include "optLib/ObjectiveFunction.h"
 #include <igl/forward_kinematics.h>
 #include "mass_props.h"
+#pragma once
 
 using namespace Eigen;
 using namespace std;

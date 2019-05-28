@@ -1,3 +1,5 @@
+#pragma once
+
 #include "optLib/ObjectiveFunction.h"
 #include <igl/forward_kinematics.h>
 

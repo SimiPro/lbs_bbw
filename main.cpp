@@ -27,6 +27,7 @@
 #include "optLib/GradientDescentMinimizer.h"
 #include "mass_props.h"
 #include "com_energy.h"
+#include "boss_energy.h"
 
 using namespace Eigen;
 using namespace std;
@@ -126,6 +127,14 @@ void addPose(const VectorXd &a) {
     poses.push_back(dQ);
 }
 
+void evaluate_com(const VectorXd &a) {
+    if (balance_joint != -1) {
+        RowVector3d com_target = CT.row(balance_joint);
+
+        CoMEnergyFunction comOptim(C, F, BE, M, P, com_target); 
+        cout << "loss com: " << comOptim.evaluate(a) << endl;    
+    }
+}
 
 void new_mesh(Viewer &viewer, VectorXd &a) {
     // transformations
@@ -148,11 +157,14 @@ void new_mesh(Viewer &viewer, VectorXd &a) {
 
     addPose(a);
 
+    evaluate_com(a);
+
 
     viewer.data().clear();
     viewer.data().set_mesh(V, F);
     viewer.data().set_normals(UN);
 }
+
 
 void optim_com(Viewer &viewer, VectorXd &a) {
 //    int bone = getSelectedBone();
@@ -162,10 +174,11 @@ void optim_com(Viewer &viewer, VectorXd &a) {
 
     RowVector3d com_target = CT.row(balance_joint);
 
+    
     CoMEnergyFunction comOptim(C, F, BE, M, P, com_target); 
     cout << "loss before: " << comOptim.evaluate(a) << endl;
 
-    GradientDescentMomentum funcOpt(25, 1e-5, 10);
+    GradientDescentVariableStep funcOpt(250, 1e-6, 15);
     funcOpt.minimize(&comOptim, a);
     
     cout << "loss after: " << comOptim.evaluate(a) << endl;
