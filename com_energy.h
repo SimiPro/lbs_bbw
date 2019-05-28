@@ -69,7 +69,14 @@ class CoMEnergyFunction : public ObjectiveFunction {
         MatrixXd jakob; // dx(a) / da
         jacobian_finite_diff(a, jakob); // |T| x (3*m)
 
-        MatrixXd du_da = M*jakob; // |V| x (3*m)
+        assert(jakob.rows() % 3 == 0);
+        int t_dim = jakob.rows() / 3;
+        MatrixXd du_daX = M*jakob.block(0,0,t_dim, jakob.cols()); // |V| x (3*m)
+        MatrixXd du_daY = M*jakob.block(t_dim,0,t_dim, jakob.cols()); // |V| x (3*m)
+        MatrixXd du_daZ = M*jakob.block(2*t_dim,0,t_dim, jakob.cols()); // |V| x (3*m)
+
+        MatrixXd du_da(M.rows()*3, jakob.cols());
+        du_da << du_daX, du_daY, du_daZ;
 
         dEda = du_da.transpose() * (dEdx*dCoM_du); // 1 x (3*m)
     }
