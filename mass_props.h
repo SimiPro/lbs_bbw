@@ -38,7 +38,7 @@ void props(const Eigen::MatrixXd &V, const Eigen::MatrixXi &F, const double phi,
         Vector3d b_bar; b_bar << b[1], b[2], b[0];
         Vector3d c_bar; c_bar << c[1], c[2], c[0];
 
-        Vector3d h8 = a_bar.array()*h5.array() + b.array()*h6.array() + c.array()*h7.array();
+        Vector3d h8 = a_bar.array()*h5.array() + b_bar.array()*h6.array() + c_bar.array()*h7.array();
         s10[0] += (n.array()*h1.array())[0];
 
         Vector3d stemp = n.array()*h3.array();
@@ -106,7 +106,7 @@ void props_dv(const Eigen::MatrixXd &V, const Eigen::MatrixXi &F, const double p
         Vector3d b_bar; b_bar << b[1], b[2], b[0];
         Vector3d c_bar; c_bar << c[1], c[2], c[0];
 
-        Vector3d h8 = a_bar.array()*h5.array() + b.array()*h6.array() + c.array()*h7.array();
+        Vector3d h8 = a_bar.array()*h5.array() + b_bar.array()*h6.array() + c_bar.array()*h7.array();
 
 
         // here starts real derivative
@@ -178,10 +178,10 @@ void props_dv(const Eigen::MatrixXd &V, const Eigen::MatrixXi &F, const double p
         s_dv.block(7, ci, 3, 3) += dn_dc * makeH(h4).transpose() + nh7M;
     }
 
-    s_dv.row(0) *= 1/6;
-    s_dv.row(1) *= 1/24; s_dv.row(2) *= 1/24; s_dv.row(3) *= 1/24;
-    s_dv.row(4) *= 1/120; s_dv.row(5) *= 1/120; s_dv.row(6) *= 1/120;
-    s_dv.row(7) *= 1/60; s_dv.row(8) *= 1/60; s_dv.row(9) *= 1/60;
+    s_dv.row(0) *= 1./6;
+    s_dv.row(1) *= 1./24; s_dv.row(2) *= 1./24; s_dv.row(3) *= 1./24;
+    s_dv.row(4) *= 1./120; s_dv.row(5) *= 1./120; s_dv.row(6) *= 1./120;
+    s_dv.row(7) *= 1./60; s_dv.row(8) *= 1./60; s_dv.row(9) *= 1./60;
 
     s_dv *= phi;
 

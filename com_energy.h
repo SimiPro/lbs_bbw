@@ -49,8 +49,8 @@ class CoMEnergyFunction : public ObjectiveFunction {
         // dCom_du = 3*|V|
         MatrixXd ds_dv;
         props_dv(U, F, 0.1, ds_dv);
+        
         dCoMdu.resize(3, 3*U.rows());
-
         dCoMdu.row(0) = ds_dv.row(1);
         dCoMdu.row(1) = ds_dv.row(2);
         dCoMdu.row(2) = ds_dv.row(3);
@@ -71,14 +71,18 @@ class CoMEnergyFunction : public ObjectiveFunction {
 
         assert(jakob.rows() % 3 == 0);
         int t_dim = jakob.rows() / 3;
-        MatrixXd du_daX = M*jakob.block(0,0,t_dim, jakob.cols()); // |V| x (3*m)
-        MatrixXd du_daY = M*jakob.block(t_dim,0,t_dim, jakob.cols()); // |V| x (3*m)
-        MatrixXd du_daZ = M*jakob.block(2*t_dim,0,t_dim, jakob.cols()); // |V| x (3*m)
+        MatrixXd du_daX = M*jakob.block(0, 0, t_dim, jakob.cols()); // |V| x (3*m)
+        MatrixXd du_daY = M*jakob.block(t_dim, 0,t_dim, jakob.cols()); // |V| x (3*m)
+        MatrixXd du_daZ = M*jakob.block(2*t_dim, 0,t_dim, jakob.cols()); // |V| x (3*m)
 
         MatrixXd du_da(M.rows()*3, jakob.cols());
         du_da << du_daX, du_daY, du_daZ;
 
-        dEda = du_da.transpose() * (dEdx*dCoM_du); // 1 x (3*m)
+        assert(du_da(0,0) == du_daX(0,0));
+        assert(du_da(du_daX.rows(), 0) == du_daY(0,0));
+
+
+        dEda =  (dEdx*dCoM_du) * du_da; // 1 x (3*m)
     }
 
     // here we copy a because we later want to add and subtract from it 
