@@ -22,23 +22,23 @@ public:
 		for (int i = 0; i < iterations; ++i) {
 
 			// for each element of `x`, generate a random variable in the search region
-			VectorXd xr(x.size());
-			for (int i = 0; i < x.size(); ++i) {
-				xr[i] = dist(rng) * (searchDomainMax[i] - searchDomainMin[i]) + searchDomainMin[i];
-			}
-
-			// if function value at new `x` is smaller, let's keep it
-			double f = function->evaluate(xr);
-			if(f < fBest){
-				x = xr;
-				fBest = f;
-			}
+            
+            for (int j = 0; j < x.rows(); j++) {
+                VectorXd xr = x;
+                xr[j] = dist(rng) * (searchDomainMax[j] - searchDomainMin[j]) + searchDomainMin[j];
+                // if function value at new `x` is smaller, let's keep it
+                double f = function->evaluate(xr);
+                if(f < fBest){
+                    x = xr;
+                    fBest = f;
+                }
+            }
 		}
 		return false;
 	}
 
 public:
-	int iterations = 1;
+	int iterations = 100;
 	VectorXd searchDomainMax, searchDomainMin;
 
 	mutable double fBest;

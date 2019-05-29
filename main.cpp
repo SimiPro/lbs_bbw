@@ -25,6 +25,8 @@
 
 #include "kin.h"
 #include "optLib/GradientDescentMinimizer.h"
+#include "optLib/RandomMinimizer.h"
+
 #include "mass_props.h"
 #include "com_energy.h"
 #include "boss_energy.h"
@@ -174,15 +176,20 @@ void optim_com(Viewer &viewer, VectorXd &a) {
 
     RowVector3d com_target = CT.row(balance_joint);
 
-    
     CoMEnergyFunction comOptim(C, F, BE, M, P, com_target); 
     cout << "loss before: " << comOptim.evaluate(a) << endl;
 
-    GradientDescentVariableStep funcOpt(250, 1e-6, 15);
+    VectorXd upper = VectorXd::Constant(a.rows(), igl::PI/8);
+    VectorXd lower = VectorXd::Constant(a.rows(),  -igl::PI/8);
+    
+
+    //GradientDescentVariableStep funcOpt(250, 1e-6, 15);
+    RandomMinimizer funcOpt(upper, lower);
     funcOpt.minimize(&comOptim, a);
     
     cout << "loss after: " << comOptim.evaluate(a) << endl;
-
+    cout << "a:" << endl;
+    cout << a << endl;
     new_mesh(viewer, a);
 }
 

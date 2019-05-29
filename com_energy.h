@@ -29,8 +29,12 @@ class CoMEnergyFunction : public ObjectiveFunction {
         forward2(a, U, CBase, true);
 
         RowVector3d com; setCom(U, com);
+        RowVector2d com_xz; 
+        com_xz << com[0], com[2];
 
-        double loss = (com - CoM_target).array().pow(2).sum();
+        RowVector2d CoM_targetxz;
+        CoM_targetxz << CoM_target[0], CoM_target[2];
+        double loss = (com_xz - CoM_targetxz).array().pow(2).sum();
 
         return loss;
     }
@@ -63,7 +67,7 @@ class CoMEnergyFunction : public ObjectiveFunction {
         forward2(a, U, CBase, true);
 
         RowVector3d com; setCom(U, com);
-        RowVector3d dEdx = 2*(com - CoM_target); // 1 x 3
+        RowVector3d dEdx = 2*(com.segment(0,2) - CoM_target.segment(0,2)); // 1 x 3
 
         MatrixXd dCoM_du; setComDv(U, dCoM_du); // 3 x (3*|V|)
 
