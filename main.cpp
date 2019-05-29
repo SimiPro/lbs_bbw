@@ -29,7 +29,7 @@
 
 #include "mass_props.h"
 #include "com_energy.h"
-#include "boss_energy.h"
+//#include "boss_energy.h"
 
 using namespace Eigen;
 using namespace std;
@@ -133,7 +133,7 @@ void evaluate_com(const VectorXd &a) {
     if (balance_joint != -1) {
         RowVector3d com_target = CT.row(balance_joint);
 
-        CoMEnergyFunction comOptim(C, F, BE, M, P, com_target); 
+        CoMEnergyFunction comOptim(C, F, BE, M, P, com_target, balance_joint); 
         cout << "loss com: " << comOptim.evaluate(a) << endl;    
     }
 }
@@ -176,18 +176,22 @@ void optim_com(Viewer &viewer, VectorXd &a) {
 
     RowVector3d com_target = CT.row(balance_joint);
 
-    CoMEnergyFunction comOptim(C, F, BE, M, P, com_target); 
+    CoMEnergyFunction comOptim(C, F, BE, M, P, com_target, balance_joint); 
     cout << "loss before: " << comOptim.evaluate(a) << endl;
 
-    VectorXd upper = VectorXd::Constant(a.rows(), igl::PI/8);
-    VectorXd lower = VectorXd::Constant(a.rows(),  -igl::PI/8);
-    
+    VectorXd upper = VectorXd::Constant(a.rows(), igl::PI/6);
+    VectorXd lower = VectorXd::Constant(a.rows(),  -igl::PI/6);
 
-    //GradientDescentVariableStep funcOpt(250, 1e-6, 15);
     RandomMinimizer funcOpt(upper, lower);
     funcOpt.minimize(&comOptim, a);
-    
-    cout << "loss after: " << comOptim.evaluate(a) << endl;
+
+    cout << "loss random: " << comOptim.evaluate(a) << endl;
+    cout << "a:" << endl;
+
+    GradientDescentVariableStep gradOpt(25, 1e-6, 25);
+    gradOpt.minimize(&comOptim, a);
+
+    cout << "loss after both: " << comOptim.evaluate(a) << endl;
     cout << "a:" << endl;
     cout << a << endl;
     new_mesh(viewer, a);
@@ -201,12 +205,12 @@ void optim(Viewer &viewer, VectorXd &a) {
     CTarget.row(selected) = moving_point;
 
     EnergyFunction kinOptim(C, BE, M, P, CTarget);
-    cout << "loss before: " << kinOptim.evaluate(a) << endl;
+ //   cout << "loss before: " << kinOptim.evaluate(a) << endl;
 
     GradientDescentMomentum funcOpt(25, 1e-5, 10);
     funcOpt.minimize(&kinOptim, a);
     
-    cout << "loss after: " << kinOptim.evaluate(a) << endl;
+  //  cout << "loss after: " << kinOptim.evaluate(a) << endl;
 
     new_mesh(viewer, a);
 }

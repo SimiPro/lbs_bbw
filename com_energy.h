@@ -18,9 +18,10 @@ class CoMEnergyFunction : public ObjectiveFunction {
     const MatrixXd &M;
     const VectorXi &P;
     const RowVector3d &CoM_target;
+    const int balancing_joint;
     CoMEnergyFunction(const MatrixXd &C_, const MatrixXi &F_, const MatrixXi &BE_, const MatrixXd &M_, 
-        const VectorXi &P_, const RowVector3d &CoM_target_) 
-            : BE(BE_), M(M_), C(C_), P(P_), CoM_target(CoM_target_), F(F_) {
+        const VectorXi &P_, const RowVector3d &CoM_target_, const int balancing_joint_) 
+            : BE(BE_), M(M_), C(C_), P(P_), CoM_target(CoM_target_), F(F_), balancing_joint(balancing_joint_) {
     }
     virtual ~CoMEnergyFunction(void){ }
 
@@ -29,13 +30,10 @@ class CoMEnergyFunction : public ObjectiveFunction {
         forward2(a, U, CBase, true);
 
         RowVector3d com; setCom(U, com);
-        RowVector2d com_xz; 
-        com_xz << com[0], com[2];
 
-        RowVector2d CoM_targetxz;
-        CoM_targetxz << CoM_target[0], CoM_target[2];
-        double loss = (com_xz - CoM_targetxz).array().pow(2).sum();
-
+        double loss = pow((com[0] - CoM_target[0]), 2);
+        loss += pow((com[2] - CoM_target[2]), 2);
+        loss += 5*(CBase.row(balancing_joint) - C.row(balancing_joint)).array().pow(2).sum();
         return loss;
     }
 
@@ -67,12 +65,14 @@ class CoMEnergyFunction : public ObjectiveFunction {
         forward2(a, U, CBase, true);
 
         RowVector3d com; setCom(U, com);
-        RowVector3d dEdx = 2*(com.segment(0,2) - CoM_target.segment(0,2)); // 1 x 3
-
-        MatrixXd dCoM_du; setComDv(U, dCoM_du); // 3 x (3*|V|)
+        double dEdxx = 2*(com[0] - CoM_target[0]);
+        double dEdz = 2*(com[2] - CoM_target[2]);
+        RowVector3d dEdx = 2*(com - CoM_target); // 1 x 3
+        RowVector2d dEdxz = RowVector2d(dEdxx, dEdz);
 
         MatrixXd jakob; // dx(a) / da
         jacobian_finite_diff(a, jakob); // |T| x (3*m)
+
 
         assert(jakob.rows() % 3 == 0);
         int t_dim = jakob.rows() / 3;
@@ -86,8 +86,12 @@ class CoMEnergyFunction : public ObjectiveFunction {
         assert(du_da(0,0) == du_daX(0,0));
         assert(du_da(du_daX.rows(), 0) == du_daY(0,0));
 
+        MatrixXd dCoM_du; setComDv(U, dCoM_du); // 3 x (3*|V|)
+        MatrixXd dCoMduxz(2, dCoM_du.cols()); // 2 x (3*|V|)
+        dCoMduxz << dCoM_du.row(0), dCoM_du.row(2);
 
         dEda =  (dEdx*dCoM_du) * du_da; // 1 x (3*m)
+       // dEda = (dEdxz*dCoMduxz) * du_da;
     }
 
     // here we copy a because we later want to add and subtract from it 
