@@ -23,13 +23,16 @@
 #include <igl/directed_edge_orientations.h>
 #include <igl/deform_skeleton.h>
 
+
 #include "kin.h"
 #include "optLib/GradientDescentMinimizer.h"
 #include "optLib/RandomMinimizer.h"
+#include "optLib/GeneticMinimizer.h"
 
 #include "mass_props.h"
 #include "com_energy.h"
 //#include "boss_energy.h"
+
 
 using namespace Eigen;
 using namespace std;
@@ -81,7 +84,10 @@ int balance_joint = -1;
 vector<RotationList > poses;
 int curr_pose = 0;
 bool animate = false;
-
+//double anim_t = 1.0;
+RotationList start_pose, end_pose, anim_pose;
+std::vector<RotationList> key_poses;
+int num_interpol = 50;
 /// Animation stuff end
 
 int getSelectedBone() {
@@ -157,7 +163,7 @@ void new_mesh(Viewer &viewer, VectorXd &a) {
 
 
 
-    addPose(a);
+   // addPose(a);
 
     evaluate_com(a);
 
@@ -189,7 +195,7 @@ void optim_com(Viewer &viewer, VectorXd &a) {
     cout << "a:" << endl;
 
     GradientDescentVariableStep gradOpt(25, 1e-6, 25);
-    gradOpt.minimize(&comOptim, a);
+    //gradOpt.minimize(&comOptim, a);
 
     cout << "loss after both: " << comOptim.evaluate(a) << endl;
     cout << "a:" << endl;
@@ -242,6 +248,23 @@ bool key_down(Viewer &viewer, unsigned char key, int mods) {
         new_mesh(viewer, a);
         break;
     case '1':
+        key_poses = std::vector<RotationList>(poses);
+        anim_pose = RotationList(poses[0].size());
+       
+        poses.clear();
+        poses.push_back(key_poses[0]);
+        for(int i = 0; i < key_poses.size() - 1; i++) {
+            start_pose = RotationList(key_poses[i]);
+            end_pose = RotationList(key_poses[i+1]);
+            for(int j = 1; j < num_interpol; j++) {
+                for(int e = 0; e < start_pose.size(); e++) {
+                    anim_pose[e] = start_pose[e].slerp(1. / num_interpol * j, end_pose[e]);
+                }
+                poses.push_back(anim_pose);
+            }
+            poses.push_back(end_pose);
+        }
+       
         animate = !animate;
         viewer.core.is_animating = !viewer.core.is_animating;
         break;
@@ -454,6 +477,10 @@ int main(int argc, char *argv[]) {
 
         if (ImGui::Button("Optimize CoM", ImVec2(-1, 0))) {
             optim_com(viewer, a);
+        }
+
+        if (ImGui::Button("add Pose", ImVec2(-1, 0))) {
+            addPose(a);
         }
           
     };
