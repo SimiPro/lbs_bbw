@@ -71,6 +71,11 @@ int mouse_x = -1, mouse_y = -1; double mouse_z = -1;
 int moved = 0;
 bool dragging = false;
 
+// Gen. algorithm
+int popSize = 10;
+int numRand = 2;
+int max_gens = 3;
+
 // else
 const RowVector3d sea_green(70./255.,252./255.,167./255.);
 
@@ -185,10 +190,11 @@ void optim_com(Viewer &viewer, VectorXd &a) {
     CoMEnergyFunction comOptim(C, F, BE, M, P, com_target, balance_joint); 
     cout << "loss before: " << comOptim.evaluate(a) << endl;
 
-    VectorXd upper = VectorXd::Constant(a.rows(), igl::PI/6);
-    VectorXd lower = VectorXd::Constant(a.rows(),  -igl::PI/6);
+    VectorXd upper = VectorXd::Constant(a.rows(), igl::PI/4);
+    VectorXd lower = VectorXd::Constant(a.rows(),  -igl::PI/4);
 
-    RandomMinimizer funcOpt(upper, lower);
+    //RandomMinimizer funcOpt(upper, lower);
+    GeneticMinimizer funcOpt(popSize,numRand,max_gens, upper, lower);
     funcOpt.minimize(&comOptim, a);
 
     cout << "loss random: " << comOptim.evaluate(a) << endl;
@@ -196,6 +202,8 @@ void optim_com(Viewer &viewer, VectorXd &a) {
 
     GradientDescentVariableStep gradOpt(25, 1e-6, 25);
     //gradOpt.minimize(&comOptim, a);
+    RandomMinimizer ranmdOpt(upper, lower);
+    ranmdOpt.minimize(&comOptim, a);
 
     cout << "loss after both: " << comOptim.evaluate(a) << endl;
     cout << "a:" << endl;
@@ -471,6 +479,10 @@ int main(int argc, char *argv[]) {
     viewer.plugins.push_back(&menu);
 
     menu.callback_draw_viewer_menu = [&]() {
+        if (ImGui::Button("add Pose", ImVec2(-1, 0))) {
+            addPose(a);
+        }
+
         if (ImGui::Button("Set balancing joint", ImVec2(-1, 0))) {
             set_balance_joint = true;
         }
@@ -479,9 +491,13 @@ int main(int argc, char *argv[]) {
             optim_com(viewer, a);
         }
 
-        if (ImGui::Button("add Pose", ImVec2(-1, 0))) {
-            addPose(a);
-        }
+
+        ImGui::InputInt("Init Population", &popSize);
+        ImGui::InputInt("Internal Random", &numRand);
+        ImGui::InputInt("Max. Generations", &max_gens);
+
+
+        
           
     };
 

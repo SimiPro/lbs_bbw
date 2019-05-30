@@ -7,8 +7,9 @@
 class RandomMinimizer : public Minimizer
 {
 public:
-	RandomMinimizer(const VectorXd &upperLimit = VectorXd(), const VectorXd &lowerLimit = VectorXd(), double fBest = HUGE_VAL)
-		: searchDomainMax(upperLimit), searchDomainMin(lowerLimit), fBest(fBest) {
+	RandomMinimizer(const VectorXd &upperLimit = VectorXd(), 
+        const VectorXd &lowerLimit = VectorXd(), int max_iter = 10, double fBest = HUGE_VAL)
+		: searchDomainMax(upperLimit), searchDomainMin(lowerLimit), fBest(fBest), iterations(max_iter) {
 		fBest = HUGE_VAL;
 
 		// initial random device and set uniform distribution to [0, 1]
@@ -38,7 +39,7 @@ public:
 	}
 
 public:
-	int iterations = 100;
+	int iterations;
 	VectorXd searchDomainMax, searchDomainMin;
 
 	mutable double fBest;
