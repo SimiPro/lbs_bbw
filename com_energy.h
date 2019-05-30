@@ -1,6 +1,8 @@
 #include "optLib/ObjectiveFunction.h"
 #include <igl/forward_kinematics.h>
 #include "mass_props.h"
+#include <igl/copyleft/cgal/remesh_self_intersections.h>
+
 #pragma once
 
 using namespace Eigen;
@@ -34,6 +36,14 @@ class CoMEnergyFunction : public ObjectiveFunction {
         double loss = pow((com[0] - CoM_target[0]), 2);
         loss += pow((com[2] - CoM_target[2]), 2);
         loss += 5*(CBase.row(balancing_joint) - C.row(balancing_joint)).array().pow(2).sum();
+
+        MatrixXd Vs;
+        MatrixXi Fs, IF;
+        VectorXi J, IM;    
+        igl::copyleft::cgal::RemeshSelfIntersectionsParam param(true, false, false);
+        igl::copyleft::cgal::remesh_self_intersections(U, F, param, Vs, Fs, IF, J, IM);
+
+        loss += IF.rows();
         return loss;
     }
 
