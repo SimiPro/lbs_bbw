@@ -13,6 +13,7 @@ Then build, run and understand the [libigl
 tutorial](http://libigl.github.io/libigl/tutorial/).
 
 ## Compile
+(See also cmkae for more specific compile instructions) 
 
 Compile this project using the standard cmake routine:
 
@@ -20,6 +21,8 @@ Compile this project using the standard cmake routine:
     cd build
     cmake ..
     make
+    
+  
 
 This should find and build the dependencies and create a `example_bin` binary.
 
