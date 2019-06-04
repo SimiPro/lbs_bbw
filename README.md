@@ -2,7 +2,7 @@
 # Inverse Kinematics on Stereoids ? 
 
 
-<a href="https://www.youtube.com/watch?v=D-jCjuGztO0" target="_blank"><img src="http://img.youtube.com/vi/D-jCjuGztO0/0.jpg" alt="Example video" width="240" height="180" border="10" /></a>
+<a href="https://www.youtube.com/watch?v=xzZjtbtjyEE" target="_blank"><img src="http://img.youtube.com/vi/xzZjtbtjyEE/0.jpg" alt="Example video" width="240" height="180" border="10" /></a>
 
 <a href="https://www.youtube.com/watch?v=ZSypmxIydpA" target="_blank"><img src="http://img.youtube.com/vi/ZSypmxIydpA/0.jpg" alt="Example video" width="240" height="180" border="10" /></a>
 
