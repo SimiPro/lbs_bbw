@@ -2,15 +2,9 @@
 # Inverse Kinematics on Stereoids ? 
 
 
+<a href="https://www.youtube.com/watch?v=D-jCjuGztO0" target="_blank"><img src="http://img.youtube.com/vi/D-jCjuGztO0/0.jpg" alt="Example video" width="240" height="180" border="10" /></a>
 
-A blank project example showing how to use libigl and cmake. Feel free and
-encouraged to copy or fork this project as a way of starting a new personal
-project using libigl.
-
-## See the tutorial first
-
-Then build, run and understand the [libigl
-tutorial](http://libigl.github.io/libigl/tutorial/).
+<a href="https://www.youtube.com/watch?v=ZSypmxIydpA" target="_blank"><img src="http://img.youtube.com/vi/ZSypmxIydpA/0.jpg" alt="Example video" width="240" height="180" border="10" /></a>
 
 ## Compile
 (See also cmkae for more specific compile instructions) 
