@@ -16,6 +16,9 @@ Compile this project using the standard cmake routine:
     cmake ..
     make
     
+    ./LBS_BBW_bin ../big-buck-bunny.{obj,tgf}
+
+    
   
 
 This should find and build the dependencies and create a `example_bin` binary.
@@ -24,7 +27,8 @@ This should find and build the dependencies and create a `example_bin` binary.
 
 From within the `build` directory just issue:
 
-    ./example_bin
+    ./LBS_BBW_bin ../big-buck-bunny.{obj,tgf}
+
 
 A glfw app should launch displaying a 3D cube.
 
