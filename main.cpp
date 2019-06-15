@@ -269,7 +269,7 @@ void optim(Viewer &viewer, VectorXd &a) {
     new_mesh(viewer, a);
 }
 
-VectorXd a;
+VectorXd a; 
 
 
 bool key_down(Viewer &viewer, unsigned char key, int mods) {
@@ -511,6 +511,8 @@ int main(int argc, char *argv[]) {
 
     CT = C;
     BET = BE;
+
+    a.resize(BE.rows()*3); a.setZero();
 
 
 
