@@ -6,6 +6,7 @@
 
 #include <igl/read_triangle_mesh.h>
 #include <igl/readTGF.h>
+#include <igl/png/writePNG.h>
 #include <igl/bone_parents.h>
 #include <igl/directed_edge_parents.h>
 #include <igl/slice.h>
@@ -41,6 +42,7 @@ using namespace igl;
 typedef vector<Quaterniond, Eigen::aligned_allocator<Quaterniond> > RotationList;
 
 typedef igl::opengl::glfw::Viewer Viewer;
+igl::opengl::glfw::Viewer viewer;
 
 // mesh
 MatrixXi F;
@@ -125,6 +127,7 @@ void update_com() {
     com = getCoM(s10).transpose();
 }
 
+vector<GLuint> pose_img;
 
 void addPose(const VectorXd &a) {
     cout << "add pose " << endl;
@@ -138,6 +141,43 @@ void addPose(const VectorXd &a) {
         //dQ[i] = rotX;
     }
     poses.push_back(dQ);
+
+
+    // save current pose as image
+    // Allocate temporary buffers
+    Eigen::Matrix<unsigned char,Eigen::Dynamic,Eigen::Dynamic> R(1280,800);
+    Eigen::Matrix<unsigned char,Eigen::Dynamic,Eigen::Dynamic> G(1280,800);
+    Eigen::Matrix<unsigned char,Eigen::Dynamic,Eigen::Dynamic> B(1280,800);
+    Eigen::Matrix<unsigned char,Eigen::Dynamic,Eigen::Dynamic> A(1280,800);
+
+    // Draw the scene in the buffers
+    viewer.core.draw_buffer(viewer.data(),false,R,G,B,A);
+
+    // Save it to a PNG
+    igl::png::writePNG(R,G,B,A,"out.png");
+
+    const int comp = 4;                                  // 4 Channels Red, Green, Blue, Alpha
+    const int stride_in_bytes = R.rows()*comp;           // Length of one row in bytes
+
+    std::vector<unsigned char> data(R.size()*comp,0);     // The image itself;
+    for (unsigned i = 0; i < R.rows(); ++i) {
+        for (unsigned j = 0; j < R.cols(); ++j) {
+            data[(j * R.rows() * comp) + (i * comp) + 0] = R(i, R.cols()-1-j);
+            data[(j * R.rows() * comp) + (i * comp) + 1] = G(i, R.cols()-1-j);
+            data[(j * R.rows() * comp) + (i * comp) + 2] = B(i, R.cols()-1-j);
+            data[(j * R.rows() * comp) + (i * comp) + 3] = A(i, R.cols()-1-j);
+        }
+    }
+
+    // Transfer data to gpu
+    GLuint my_opengl_texture;  
+    glGenTextures(1, &my_opengl_texture);
+    glBindTexture(GL_TEXTURE_2D, my_opengl_texture);    
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, 1280, 800, 0, GL_RGBA, GL_UNSIGNED_BYTE, data.data());
+
+    pose_img.push_back(my_opengl_texture);
+
 }
 
 void evaluate_com(const VectorXd &a) {
@@ -195,15 +235,15 @@ void optim_com(Viewer &viewer, VectorXd &a) {
 
     //RandomMinimizer funcOpt(upper, lower);
     GeneticMinimizer funcOpt(popSize,numRand,max_gens, upper, lower);
-    funcOpt.minimize(&comOptim, a);
+    //funcOpt.minimize(&comOptim, a);
 
     cout << "loss random: " << comOptim.evaluate(a) << endl;
     cout << "a:" << endl;
 
     GradientDescentVariableStep gradOpt(25, 1e-6, 25);
-    //gradOpt.minimize(&comOptim, a);
+    gradOpt.minimize(&comOptim, a);
     RandomMinimizer ranmdOpt(upper, lower);
-    ranmdOpt.minimize(&comOptim, a);
+    //ranmdOpt.minimize(&comOptim, a);
 
     cout << "loss after both: " << comOptim.evaluate(a) << endl;
     cout << "a:" << endl;
@@ -472,8 +512,7 @@ int main(int argc, char *argv[]) {
     CT = C;
     BET = BE;
 
-    // Plot the mesh
-    igl::opengl::glfw::Viewer viewer;
+
 
     igl::opengl::glfw::imgui::ImGuiMenu menu;
     viewer.plugins.push_back(&menu);
@@ -496,8 +535,26 @@ int main(int argc, char *argv[]) {
         ImGui::InputInt("Internal Random", &numRand);
         ImGui::InputInt("Max. Generations", &max_gens);
 
+        float pose_window_hight = 200;
+        ImGui::SetNextWindowSize({ImGui::GetIO().DisplaySize.x, pose_window_hight}, ImGuiSetCond_Always);
+        float y_bottom = ImGui::GetIO().DisplaySize.y - pose_window_hight - 5;
+        ImGui::SetNextWindowPos({0, y_bottom}, ImGuiSetCond_Always);
 
-        
+        ImGui::Begin("Pose Window", NULL, ImGuiWindowFlags_HorizontalScrollbar);
+
+        for (int i = 0; i < pose_img.size(); i++) {
+            if (i > 0) ImGui::SameLine();
+            GLuint tex_id  = pose_img[i];
+            if (ImGui::ImageButton((void*)(intptr_t)tex_id, {200, pose_window_hight-10})) {
+                cout << "pose pressed yey" << endl;
+            }  
+        }
+
+    
+
+        ImGui::End();
+
+        ImGui::ShowDemoWindow();
           
     };
 
